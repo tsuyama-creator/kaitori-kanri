@@ -473,7 +473,7 @@ function showForm() {
     '<section class="sec"><h2>入庫情報</h2>' +
       '<div class="grid2"><div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">区分' + seg('区分', ['買取', '下取'], d['区分']) + '</div>' +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">軽・普通' + seg('軽・普通', ['軽', '普通'], d['軽・普通']) + '</div></div>' +
-      '<label class="f">車名<input class="in" data-f="車名" list="models" value="' + esc(d['車名']) + '"></label><datalist id="models">' + models.map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
+      '<label class="f">車名<input class="in" data-f="車名　※同一型式の場合別車名が出る場合があるので修正してください" list="models" value="' + esc(d['車名']) + '"></label><datalist id="models">' + models.map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
       '<div class="grid2">' + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所') + fld('走行距離', 'num', '走行距離（km）') + '</div>' +
     '</section>' +
     '<section class="sec"><h2>金額</h2><div class="grid2">' + fld('査定額', 'yen') + fld('買取額', 'yen') + '</div>' +

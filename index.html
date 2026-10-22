@@ -107,10 +107,10 @@ const F = {
   owner: [['要否','enum:不要,要'],['所有者','text'],['残債','enum:無,有'],['精算日','date'],['依頼日','date'],['解除書類','enum:未着,着'],['解除状況','enum:依頼前,依頼中,完了']],
   meigi: [['名義処理','enum:' + MEIGI.join(',')],['郵送日','date'],['完了日','date']],
   money: [['査定額','yen'],['買取額','yen'],['支払予定','date'],['支払','enum:未,済,値引充当'],['新車注文No','text'],['新車納車','date']],
-  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所']],
-  '出品': [['会場','list:会場'],['出品予定','date'],['陸送業者','list:陸送業者'],['陸送依頼','date'],['引取予定','date'],['引取日','date'],['出品番号','text'],['結果','enum:落札,流札,取消'],['落札額','yen'],['入金予定','date'],['入金日','date']],
-  '解体': [['解体業者','list:解体業者'],['引取場所','list:保管場所'],['引取予定','date'],['引取日','date'],['解体証明','date'],['スクラップ額','yen']],
-  '再販': [['作業内容','text'],['作業先','list:作業先'],['作業開始','date'],['仕上がり予定','date'],['作業完了','date'],['展示場所','list:保管場所'],['展示予定','date'],['販売価格','yen'],['販売日','date']]
+  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所'],['備考','text']],
+  '出品': [['会場','list:会場'],['出品予定','date'],['陸送業者','list:陸送業者'],['陸送依頼','date'],['引取予定','date'],['引取日','date'],['出品番号','text'],['結果','enum:落札,流札,取消'],['落札額','yen'],['入金予定','date'],['入金日','date'],['備考','text']],
+  '解体': [['解体業者','list:解体業者'],['引取場所','list:保管場所'],['引取予定','date'],['引取日','date'],['解体証明','date'],['スクラップ額','yen'],['備考','text']],
+  '再販': [['作業内容','text'],['作業先','list:作業先'],['作業開始','date'],['仕上がり予定','date'],['作業完了','date'],['展示場所','list:保管場所'],['展示予定','date'],['販売価格','yen'],['販売日','date'],['備考','text']]
 };
 
 /* ===== 状態 ===== */
@@ -571,7 +571,7 @@ function renderDetail() {
   const meth = m['処分方法'] || '未定';
   const ed = D.edits;
   const val = (scope, k) => (k in ed[scope]) ? ed[scope][k] : (scope === 'master' ? m : s || {})[k];
-  const field = (scope, k, type) => '<label class="f' + (type === 'date' ? ' full' : '') + '">' + esc(k) +
+  const field = (scope, k, type) => '<label class="f' + (type === 'date' || k === '備考' ? ' full' : '') + '">' + esc(k) +
     control(k, type, val(scope, k), 'data-scope="' + scope + '" data-k="' + esc(k) + '"', (k in ed[scope]) ? 'dirty' : '') + '</label>';
   const group = (title, scope, defs, open, badge) => '<details class="sec"' + (open ? ' open' : '') + '><summary>' + esc(title) + (badge || '') + '</summary><div class="body"><div class="grid2">' +
     defs.map(f => field(scope, f[0], f[1])).join('') + '</div></div></details>';

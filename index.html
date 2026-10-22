@@ -52,6 +52,10 @@ label.f{font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4
 .seg{display:flex;border:1px solid #C9CDD2;border-radius:10px;overflow:hidden}
 .so{flex:1;height:42px;border:none;border-right:1px solid #C9CDD2;background:#fff;font-size:14px;cursor:pointer;padding:0 4px}
 .so:last-child{border-right:none}
+.seg.many{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.seg.many .so{border-bottom:1px solid #C9CDD2}
+.seg.many .so:nth-child(3n){border-right:none}
+.seg.many .so:nth-last-child(-n+3){border-bottom:none}
 .so.on{background:var(--navy);color:#fff;font-weight:700}
 .ck{display:flex;align-items:center;gap:10px;min-height:40px;font-size:15px}
 .ck input{width:22px;height:22px;accent-color:var(--navy);margin:0}
@@ -94,7 +98,7 @@ const TOKEN = '13QIDk_QVNlkQlqzMaaW8lHc';                                       
 const SHEET_URL = '';                                                 // スプレッドシートのURL（任意）
 
 /* ===== 項目定義（Code.gs と同じ見出し） ===== */
-const METHODS = ['未定', '出品', '解体', '再販'];
+const METHODS = ['未定', '出品', '解体', '再販', '社用車', 'レンタカー'];
 const KEI_FREE = ['委任状', '譲渡証', '印鑑証明'];   // 軽自動車では不要
 const MEIGI = ['一時抹消', '自社名変', 'お客様名義のまま'];
 const DOCS = ['車検証', '自賠責', '印鑑証明', '委任状', '譲渡証', 'リサイクル券', '納税証明'];
@@ -146,7 +150,8 @@ function eraLabel(w) {
   const a = /^([RHS])(\d+)\./.exec(w || ''); if (!a) return '';
   return { R: '令和', H: '平成', S: '昭和' }[a[1]] + (a[2] === '1' ? '元' : a[2]) + '年';
 }
-const md = v => { const a = /\.(\d+)\.(\d+)$/.exec(v || ''); return a ? Number(a[1]) + '/' + Number(a[2]) : (v || ''); };
+// 日付（2026-10-22 または R8.10.22）→「10/22」
+const md = v => { const a = /\.(\d+)\.(\d+)$/.exec(toWareki(v)); return a ? Number(a[1]) + '/' + Number(a[2]) : (v || ''); };
 const yen = v => (v === '' || v == null || isNaN(Number(v))) ? (v || '') : Number(v).toLocaleString('ja-JP') + '円';
 const isDone = st => /完了|販売済/.test(st || '');
 function stCls(s) {
@@ -449,7 +454,7 @@ function control(name, type, value, attrs, extraCls) {
   return '<input class="' + cls + '" ' + attrs + ' value="' + esc(v) + '">';
 }
 function seg(field, options, value) {
-  return '<div class="seg" role="group">' + options.map(o =>
+  return '<div class="seg' + (options.length > 4 ? ' many' : '') + '" role="group">' + options.map(o =>
     '<button type="button" class="so' + (o === value ? ' on' : '') + '" aria-pressed="' + (o === value) + '" data-seg="' + esc(field) + '" data-v="' + esc(o) + '">' + esc(o) + '</button>').join('') + '</div>';
 }
 function showForm() {
@@ -544,10 +549,12 @@ function steps(m, s) {
     add('解体証明', md(s['解体証明']), s['解体証明']);
   } else if (meth === '再販') {
     add('仕上げ作業', [s['作業内容'], s['作業完了'] ? '完了 ' + md(s['作業完了']) : '予定 ' + (md(s['仕上がり予定']) || '未定')].filter(Boolean).join(' ・ '), s['作業完了']);
-    add('展示', [s['展示場所'], md(s['展示予定'])].filter(Boolean).join(' ・ '), s['作業完了'] && s['展示予定'] && wKey(s['展示予定']) <= wKey(today()));
+    add('展示', [s['展示場所'], md(s['展示予定'])].filter(Boolean).join(' ・ '), s['作業完了'] && s['展示予定'] && wKey(toWareki(s['展示予定'])) <= wKey(today()));
     add('販売', s['販売日'] ? md(s['販売日']) + (s['販売価格'] ? ' ・ ' + yen(s['販売価格']) : '') : '', s['販売日']);
+  } else if (meth === '社用車' || meth === 'レンタカー') {
+    add(meth + 'として使用', '', true);
   } else {
-    add('処分方法を決める', '出品・解体・再販から選択', false);
+    add('処分方法を決める', '出品・解体・再販・社用車・レンタカーから選択', false);
   }
   // どの処分方法でも、最後に抹消か名変（またはお客様名義のまま）
   if (meth && meth !== '未定') {
@@ -608,7 +615,8 @@ function renderDetail() {
     const scope = el.dataset.scope, k = el.dataset.k;
     const val = el.dataset.date ? toWareki(el.value) : el.value;
     const orig = (scope === 'master' ? m : s || {})[k];
-    if (String(orig == null ? '' : orig) === val) delete ed[scope][k]; else ed[scope][k] = val;
+    const before = el.dataset.date ? toWareki(orig) : String(orig == null ? '' : orig);
+    if (before === val) delete ed[scope][k]; else ed[scope][k] = val;
     const open = Array.from(app.querySelectorAll('details')).map(x => x.open);
     const y = window.scrollY;
     renderDetail();

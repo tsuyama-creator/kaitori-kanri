@@ -76,6 +76,10 @@ label.f{font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4
 .toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:50;max-width:90vw;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 .loading{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:40;font-size:15px;color:var(--navy);font-weight:700}
+.grid2 .full{grid-column:1/-1}
+.dwrap{display:flex;align-items:center;gap:8px;min-width:0}
+.dwrap .in{flex:1;min-width:0}
+.era{font-size:13px;color:var(--navy);font-weight:600;white-space:nowrap}
 .hist{font-size:13px;display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
 </style>
 </head>
@@ -137,6 +141,11 @@ function wKey(w) {
   return (ERAS.find(e => e[0] === a[1])[1] + Number(a[2])) + '-' + pad2(a[3]) + '-' + pad2(a[4]);
 }
 const today = () => toWareki(new Date());
+// 「R8.04.12」→「令和8年」（日付の横に表示する）
+function eraLabel(w) {
+  const a = /^([RHS])(\d+)\./.exec(w || ''); if (!a) return '';
+  return { R: '令和', H: '平成', S: '昭和' }[a[1]] + (a[2] === '1' ? '元' : a[2]) + '年';
+}
 const md = v => { const a = /\.(\d+)\.(\d+)$/.exec(v || ''); return a ? Number(a[1]) + '/' + Number(a[2]) : (v || ''); };
 const yen = v => (v === '' || v == null || isNaN(Number(v))) ? (v || '') : Number(v).toLocaleString('ja-JP') + '円';
 const isDone = st => /完了|販売済/.test(st || '');
@@ -425,7 +434,9 @@ function newDraft() {
 function control(name, type, value, attrs, extraCls) {
   const v = value == null ? '' : value;
   const cls = 'in' + (extraCls ? ' ' + extraCls : '');
-  if (type === 'date') return '<input class="' + cls + '" data-date="1" placeholder="R8.4.12" autocomplete="off" ' + attrs + ' value="' + esc(v) + '">';
+  // 日付：西暦のカレンダーで選び、横に和暦の年を表示。保存は和暦（R8.04.12）
+  if (type === 'date') return '<div class="dwrap"><input class="' + cls + '" type="date" data-date="1" ' + attrs + ' value="' + esc(wKey(toWareki(v))) + '">' +
+    '<span class="era">' + esc(eraLabel(toWareki(v))) + '</span></div>';
   if (type === 'num' || type === 'yen') return '<input class="' + cls + '" inputmode="numeric" ' + attrs + ' value="' + esc(v) + '">';
   let opts = null;
   if (type === 'doc') opts = ['○', '×', '不要'];
@@ -444,7 +455,7 @@ function seg(field, options, value) {
 function showForm() {
   if (!S.draft) S.draft = newDraft();
   const d = S.draft;
-  const fld = (name, type, label, qr) => '<label class="f">' + esc(label || name) + control(name, type, d[name], 'data-f="' + esc(name) + '"', qr ? 'qr' : '') + '</label>';
+  const fld = (name, type, label, qr) => '<label class="f' + (type === 'date' ? ' full' : '') + '">' + esc(label || name) + control(name, type, d[name], 'data-f="' + esc(name) + '"', qr ? 'qr' : '') + '</label>';
   const qrs = d._qr || [];
   const models = Array.from(new Set(Object.values(S.options.models || {})));
   app.innerHTML =
@@ -458,7 +469,7 @@ function showForm() {
       '<div class="grid2"><div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">区分' + seg('区分', ['買取', '下取'], d['区分']) + '</div>' +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">軽・普通' + seg('軽・普通', ['軽', '普通'], d['軽・普通']) + '</div></div>' +
       '<label class="f">車名<input class="in" data-f="車名" list="models" value="' + esc(d['車名']) + '"></label><datalist id="models">' + models.map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
-      '<div class="grid2">' + fld('走行距離', 'num', '走行距離（km）') + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所') + '</div>' +
+      '<div class="grid2">' + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所') + fld('走行距離', 'num', '走行距離（km）') + '</div>' +
     '</section>' +
     '<section class="sec"><h2>金額</h2><div class="grid2">' + fld('査定額', 'yen') + fld('買取額', 'yen') + '</div>' +
       (d['区分'] === '下取' ? '<div class="grid2">' + fld('新車注文No', 'text') + fld('新車納車', 'date') + '</div>' : '') +
@@ -475,10 +486,10 @@ function showForm() {
     '</section><p class="err" id="formErr"></p></main>' +
     '<div class="bar"><button class="btn p" type="button" id="submit">マスターに登録</button></div></div>';
 
-  app.querySelectorAll('[data-f]').forEach(el => {
-    el.addEventListener('input', () => { d[el.dataset.f] = el.value; });
-    if (el.dataset.date) el.addEventListener('change', () => { el.value = toWareki(el.value); d[el.dataset.f] = el.value; });
-  });
+  app.querySelectorAll('[data-f]').forEach(el => el.addEventListener(el.dataset.date ? 'change' : 'input', () => {
+    d[el.dataset.f] = el.dataset.date ? toWareki(el.value) : el.value;
+    if (el.dataset.date) el.nextElementSibling.textContent = eraLabel(d[el.dataset.f]);
+  }));
   app.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('change', () => { d['doc_' + el.dataset.doc] = el.checked; }));
   app.querySelectorAll('[data-seg]').forEach(el => el.addEventListener('click', () => { d[el.dataset.seg] = el.dataset.v; showForm(); }));
   document.getElementById('submit').addEventListener('click', submitForm);
@@ -553,7 +564,7 @@ function renderDetail() {
   const meth = m['処分方法'] || '未定';
   const ed = D.edits;
   const val = (scope, k) => (k in ed[scope]) ? ed[scope][k] : (scope === 'master' ? m : s || {})[k];
-  const field = (scope, k, type) => '<label class="f">' + esc(k) +
+  const field = (scope, k, type) => '<label class="f' + (type === 'date' ? ' full' : '') + '">' + esc(k) +
     control(k, type, val(scope, k), 'data-scope="' + scope + '" data-k="' + esc(k) + '"', (k in ed[scope]) ? 'dirty' : '') + '</label>';
   const group = (title, scope, defs, open, badge) => '<details class="sec"' + (open ? ' open' : '') + '><summary>' + esc(title) + (badge || '') + '</summary><div class="body"><div class="grid2">' +
     defs.map(f => field(scope, f[0], f[1])).join('') + '</div></div></details>';
@@ -595,9 +606,9 @@ function renderDetail() {
 
   app.querySelectorAll('[data-scope]').forEach(el => el.addEventListener('change', () => {
     const scope = el.dataset.scope, k = el.dataset.k;
-    if (el.dataset.date) el.value = toWareki(el.value);
+    const val = el.dataset.date ? toWareki(el.value) : el.value;
     const orig = (scope === 'master' ? m : s || {})[k];
-    if (String(orig == null ? '' : orig) === el.value) delete ed[scope][k]; else ed[scope][k] = el.value;
+    if (String(orig == null ? '' : orig) === val) delete ed[scope][k]; else ed[scope][k] = val;
     const open = Array.from(app.querySelectorAll('details')).map(x => x.open);
     const y = window.scrollY;
     renderDetail();

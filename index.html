@@ -97,7 +97,7 @@ const F = {
   owner: [['要否','enum:不要,要'],['所有者','text'],['残債','enum:無,有'],['精算日','date'],['解除書類','enum:未着,着'],['解除状況','enum:依頼前,依頼中,完了']],
   massho: [['抹消種類','enum:一時,永久,なし'],['申請日','date'],['完了日','date'],['還付手続','enum:未,済,対象外']],
   money: [['査定額','yen'],['買取額','yen'],['支払予定','date'],['支払','enum:未,済,値引充当'],['新車注文No','text'],['新車納車','date']],
-  basic: [['区分','enum:買取,下取'],['入庫日','date'],['担当','list:担当'],['車名','text'],['登録番号','text'],['車台番号','text'],['型式','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所']],
+  basic: [['区分','enum:買取,下取'],['入庫日','date'],['担当','list:担当'],['車名','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所']],
   '出品': [['会場','list:会場'],['出品予定','date'],['陸送業者','list:陸送業者'],['陸送依頼','date'],['引取予定','date'],['引取日','date'],['出品番号','text'],['結果','enum:落札,流札,取消'],['落札額','yen'],['入金予定','date'],['入金日','date']],
   '解体': [['解体業者','list:解体業者'],['引取場所','list:保管場所'],['引取予定','date'],['引取日','date'],['解体証明','date'],['スクラップ額','yen']],
   '再販': [['作業内容','text'],['作業先','list:作業先'],['作業開始','date'],['仕上がり予定','date'],['作業完了','date'],['展示場所','list:保管場所'],['展示予定','date'],['販売価格','yen'],['販売日','date']]
@@ -336,24 +336,33 @@ function applyText(text) {
   return true;
 }
 const z2h = t => t.replace(/[０-９Ａ-Ｚａ-ｚ－]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+// 登録番号は全角12文字（標板文字4・分類番号3・かな1・一連番号4、空きは全角スペース）→「袖ヶ浦300あ1234」の形にする
 function fmtReg(s) {
   const strip = t => z2h(t).replace(/[\s　・]/g, '');
-  if (s.length < 12) return strip(s);
-  const ser = strip(s.slice(8, 12));
-  return [strip(s.slice(0, 4)), strip(s.slice(4, 7)), strip(s.slice(7, 8)), /^\d{4}$/.test(ser) ? ser.slice(0, 2) + '-' + ser.slice(2) : ser].filter(Boolean).join(' ');
+  return strip(s);
 }
-// 初度登録は過去なので今年より後なら1900年代、車検満了は未来の日付なので常に2000年代
-function yearOf(yy) { const now = new Date().getFullYear() % 100; return (yy > now ? 1900 : 2000) + yy; }
 function ymd(s) { s = (s || '').trim(); return /^\d{6}$/.test(s) && s !== '999999' ? (2000 + Number(s.slice(0, 2))) + '-' + s.slice(2, 4) + '-' + s.slice(4, 6) : ''; }
-function ym(s) { s = (s || '').trim(); return /^\d{4}$/.test(s) && s !== '9999' ? yearOf(+s.slice(0, 2)) + '-' + s.slice(2, 4) : ''; }
-// 国交省「二次元コード項目定義」準拠：コード2＝登録番号・車台番号など、コード3＝満了日・初度登録・型式など（区切りは「/」）
+// 型式「5BA-HA36S」→「HA36S」（車名の自動入力に使う。シートには保存しない）
+const baseModel = m => String(m || '').trim().split('-').pop();
+// 車検証QRの解析（区切りは「/」）
+//  軽自動車（軽自動車検査協会）：先頭が「K」、2番目がバージョン（コード2＝「22」、コード3＝「32」）
+//  普通車（国交省）：先頭がバージョン「2」
 function parseShaken(text) {
   const f = (text || '').split('/');
-  if (f.length >= 15) {
-    return { kind: 3, fields: { '車検満了': ymd(f[4]) || ymd(f[5]), '型式': (f[7] || '').trim() } };
+  const kei = f[0] === 'K';
+  const v = kei ? f.slice(2) : f.slice(1);
+  const code = kei ? String(f[1] || '').charAt(0) : (f.length >= 15 ? '3' : f.length >= 5 && f.length <= 8 ? '2' : '');
+  if (code === '2') {
+    // v = [車両番号, 標板, 車台番号, 原動機型式, 帳票種別]
+    return { kind: 2, fields: { '登録番号': fmtReg(v[0] || ''), '車台番号': (v[2] || '').trim() } };
   }
-  if (f.length >= 5 && f.length <= 8) {
-    return { kind: 2, fields: { '登録番号': fmtReg(f[1] || ''), '車台番号': (f[3] || '').trim() } };
+  if (code === '3') {
+    // 軽: v = [打刻位置, 型式指定番号, 満了日, 初度検査, 型式, …]
+    // 普通: v = [打刻位置, 型式指定番号, 999999, 満了日, 満了日, 初度登録, 型式, …]
+    const fields = kei
+      ? { '車検満了': ymd(v[2]), '型式': (v[4] || '').trim() }
+      : { '車検満了': ymd(v[3]) || ymd(v[4]), '型式': (v[6] || '').trim() };
+    return { kind: 3, fields };
   }
   return null;
 }
@@ -367,14 +376,14 @@ function renderCodes() {
       '<span class="grow">' + label + '</span><span style="font-size:13px;font-weight:700">' + n + ' / ' + size + '</span></div>';
   };
   el.innerHTML = '<div class="row between"><h2>読み取り状況</h2><span class="muted">QRは全部で5つ</span></div>' +
-    row(2, 2, '登録番号・車台番号') + row(3, 3, '型式・車検満了');
+    row(2, 2, '登録番号・車台番号') + row(3, 3, '車検満了など');
 }
 function finishScan() {
   const sc = S.scan; stopCamera(); sc.finished = true;
   const qr = sc.qr;
   S.draft = Object.assign(newDraft(), qr);
-  if (qr['型式'] && S.options.models && S.options.models[qr['型式']]) S.draft['車名'] = S.options.models[qr['型式']];
-  S.draft._qr = Object.keys(qr).filter(k => qr[k]);
+  if (qr['型式']) { S.draft['型式'] = baseModel(qr['型式']); const nm = (S.options.models || {})[S.draft['型式']]; if (nm) S.draft['車名'] = nm; }
+  S.draft._qr = Object.keys(qr).filter(k => qr[k] && k !== '型式');
   location.hash = '#/new';
 }
 
@@ -415,7 +424,7 @@ function showForm() {
     '<main>' + (qrs.length ? '<div class="ok-banner">QRコードから' + qrs.length + '項目を入力しました</div>' : '') +
     '<section class="sec"><h2>車検証' + (qrs.length ? '（QR）' : '') + '</h2>' +
       fld('登録番号', 'text', '', qrs.includes('登録番号')) + fld('車台番号', 'text', '', qrs.includes('車台番号')) +
-      '<div class="grid2">' + fld('型式', 'text', '', qrs.includes('型式')) + fld('車検満了', 'date', '', qrs.includes('車検満了')) + '</div>' +
+      fld('車検満了', 'date', '', qrs.includes('車検満了')) +
     '</section>' +
     '<section class="sec"><h2>入庫情報</h2>' +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">区分' + seg('区分', ['買取', '下取'], d['区分']) + '</div>' +
@@ -437,7 +446,6 @@ function showForm() {
 
   app.querySelectorAll('[data-f]').forEach(el => el.addEventListener('input', () => {
     d[el.dataset.f] = el.value;
-    if (el.dataset.f === '型式' && S.options.models[el.value.trim()] && !d['車名']) { d['車名'] = S.options.models[el.value.trim()]; const n = app.querySelector('[data-f="車名"]'); if (n) n.value = d['車名']; }
   }));
   app.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('change', () => { d['doc_' + el.dataset.doc] = el.checked; }));
   app.querySelectorAll('[data-seg]').forEach(el => el.addEventListener('click', () => { d[el.dataset.seg] = el.dataset.v; showForm(); }));

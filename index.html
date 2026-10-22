@@ -91,13 +91,15 @@ const SHEET_URL = '';                                                 // スプ�
 
 /* ===== 項目定義（Code.gs と同じ見出し） ===== */
 const METHODS = ['未定', '出品', '解体', '再販'];
+const KEI_FREE = ['委任状', '譲渡証', '印鑑証明'];   // 軽自動車では不要
+const MEIGI = ['一時抹消', '自社名変', 'お客様名義のまま'];
 const DOCS = ['車検証', '自賠責', '印鑑証明', '委任状', '譲渡証', 'リサイクル券', '納税証明'];
 const F = {
   docs: [['車検証','doc'],['自賠責','doc'],['印鑑証明','doc'],['印鑑期限','date'],['委任状','doc'],['譲渡証','doc'],['リサイクル券','doc'],['納税証明','doc'],['住民票等','doc']],
   owner: [['要否','enum:不要,要'],['所有者','text'],['残債','enum:無,有'],['精算日','date'],['解除書類','enum:未着,着'],['解除状況','enum:依頼前,依頼中,完了']],
-  massho: [['抹消種類','enum:一時,永久,なし'],['申請日','date'],['完了日','date'],['還付手続','enum:未,済,対象外']],
+  meigi: [['名義処理','enum:' + MEIGI.join(',')],['申請日','date'],['完了日','date'],['還付手続','enum:未,済,対象外']],
   money: [['査定額','yen'],['買取額','yen'],['支払予定','date'],['支払','enum:未,済,値引充当'],['新車注文No','text'],['新車納車','date']],
-  basic: [['区分','enum:買取,下取'],['入庫日','date'],['担当','list:担当'],['車名','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所']],
+  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所']],
   '出品': [['会場','list:会場'],['出品予定','date'],['陸送業者','list:陸送業者'],['陸送依頼','date'],['引取予定','date'],['引取日','date'],['出品番号','text'],['結果','enum:落札,流札,取消'],['落札額','yen'],['入金予定','date'],['入金日','date']],
   '解体': [['解体業者','list:解体業者'],['引取場所','list:保管場所'],['引取予定','date'],['引取日','date'],['解体証明','date'],['スクラップ額','yen']],
   '再販': [['作業内容','text'],['作業先','list:作業先'],['作業開始','date'],['仕上がり予定','date'],['作業完了','date'],['展示場所','list:保管場所'],['展示予定','date'],['販売価格','yen'],['販売日','date']]
@@ -109,8 +111,33 @@ const app = document.getElementById('app');
 
 /* ===== 共通 ===== */
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
-const md = v => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(v || ''); return m ? Number(m[1]) + '/' + Number(m[2]) : (v || ''); };
+/* 和暦：R8.4.12 / 8.4.12（令和）/ 令和8年4月12日 / 2026-04-12 / Date → 「R8.04.12」。読めないときは入力のまま返す */
+const ERAS = [['R', 2018, '2019-05-01'], ['H', 1988, '1989-01-08'], ['S', 1925, '1926-12-25']];
+const pad2 = n => String(n).padStart(2, '0');
+function toWareki(v) {
+  if (!v) return '';
+  let y, m, d;
+  if (v instanceof Date) { y = v.getFullYear(); m = v.getMonth() + 1; d = v.getDate(); }
+  else {
+    const t = String(v).trim().replace(/[０-９Ａ-Ｚａ-ｚ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+      .replace(/[．。／ー－年月\/\-]/g, '.').replace(/日|\s/g, '').replace('元', '1');
+    let a = /^(\d{4})\.(\d{1,2})\.(\d{1,2})/.exec(t);
+    if (a) { y = +a[1]; m = +a[2]; d = +a[3]; }
+    else if ((a = /^(R|H|S|令和|平成|昭和)?\.?(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/i.exec(t))) {
+      const k = { '令和': 'R', '平成': 'H', '昭和': 'S' }[a[1]] || (a[1] || 'R').toUpperCase();
+      y = ERAS.find(e => e[0] === k)[1] + Number(a[2]); m = +a[3]; d = +a[4];
+    } else return String(v);
+  }
+  const iso = y + '-' + pad2(m) + '-' + pad2(d), e = ERAS.find(x => iso >= x[2]) || ERAS[2];
+  return e[0] + (y - e[1]) + '.' + pad2(m) + '.' + pad2(d);
+}
+// 和暦 → 比較用の「YYYY-MM-DD」
+function wKey(w) {
+  const a = /^([RHS])(\d+)\.(\d+)\.(\d+)$/.exec(w || ''); if (!a) return '';
+  return (ERAS.find(e => e[0] === a[1])[1] + Number(a[2])) + '-' + pad2(a[3]) + '-' + pad2(a[4]);
+}
+const today = () => toWareki(new Date());
+const md = v => { const a = /\.(\d+)\.(\d+)$/.exec(v || ''); return a ? Number(a[1]) + '/' + Number(a[2]) : (v || ''); };
 const yen = v => (v === '' || v == null || isNaN(Number(v))) ? (v || '') : Number(v).toLocaleString('ja-JP') + '円';
 const isDone = st => /完了|販売済/.test(st || '');
 function stCls(s) {
@@ -174,6 +201,8 @@ function nextText(m) {
   const s = m._sub, meth = m['処分方法'];
   if (m['ステータス'] === '書類不足') return '書類 ' + (m['書類判定'] || '');
   if (m['ステータス'] === '所有権解除待ち') return '所有権解除 ' + (m['解除状況'] || '依頼前');
+  if (m['ステータス'] === '名義処理未定') return '抹消か名変かを決める';
+  if (/抹消待ち|名変待ち/.test(m['ステータス'] || '')) return (m['名義処理'] || '') + ' 完了日を入力';
   if (!s) return meth === '未定' || !meth ? '処分方法が未定' : '';
   if (meth === '出品') {
     if (s['結果'] === '落札') return '入金予定 ' + (md(s['入金予定']) || '未定');
@@ -354,14 +383,14 @@ function parseShaken(text) {
   const code = kei ? String(f[1] || '').charAt(0) : (f.length >= 15 ? '3' : f.length >= 5 && f.length <= 8 ? '2' : '');
   if (code === '2') {
     // v = [車両番号, 標板, 車台番号, 原動機型式, 帳票種別]
-    return { kind: 2, fields: { '登録番号': fmtReg(v[0] || ''), '車台番号': (v[2] || '').trim() } };
+    return { kind: 2, fields: { '登録番号': fmtReg(v[0] || ''), '車台番号': (v[2] || '').trim(), '軽・普通': kei ? '軽' : '普通' } };
   }
   if (code === '3') {
     // 軽: v = [打刻位置, 型式指定番号, 満了日, 初度検査, 型式, …]
     // 普通: v = [打刻位置, 型式指定番号, 999999, 満了日, 満了日, 初度登録, 型式, …]
     const fields = kei
-      ? { '車検満了': ymd(v[2]), '型式': (v[4] || '').trim() }
-      : { '車検満了': ymd(v[3]) || ymd(v[4]), '型式': (v[6] || '').trim() };
+      ? { '車検満了': toWareki(ymd(v[2])), '型式': (v[4] || '').trim() }
+      : { '車検満了': toWareki(ymd(v[3]) || ymd(v[4])), '型式': (v[6] || '').trim() };
     return { kind: 3, fields };
   }
   return null;
@@ -389,15 +418,14 @@ function finishScan() {
 
 /* ===== ③ 登録 ===== */
 function newDraft() {
-  const d = { '区分': '買取', '入庫日': today(), '処分方法': '未定', _owner: '本人', _jumin: '不要', _qr: [] };
+  const d = { '区分': '買取', '軽・普通': '軽', '入庫日': today(), '処分方法': '未定', '名義処理': '未定', _owner: '本人', _jumin: '不要', _qr: [] };
   DOCS.forEach(k => d['doc_' + k] = k === '車検証');
   return d;
 }
 function control(name, type, value, attrs, extraCls) {
   const v = value == null ? '' : value;
   const cls = 'in' + (extraCls ? ' ' + extraCls : '');
-  if (type === 'date') return '<input class="' + cls + '" type="date" ' + attrs + ' value="' + esc(v) + '">';
-  if (type === 'month') return '<input class="' + cls + '" type="month" ' + attrs + ' value="' + esc(v) + '">';
+  if (type === 'date') return '<input class="' + cls + '" data-date="1" placeholder="R8.4.12" autocomplete="off" ' + attrs + ' value="' + esc(v) + '">';
   if (type === 'num' || type === 'yen') return '<input class="' + cls + '" inputmode="numeric" ' + attrs + ' value="' + esc(v) + '">';
   let opts = null;
   if (type === 'doc') opts = ['○', '×', '不要'];
@@ -427,7 +455,8 @@ function showForm() {
       fld('車検満了', 'date', '', qrs.includes('車検満了')) +
     '</section>' +
     '<section class="sec"><h2>入庫情報</h2>' +
-      '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">区分' + seg('区分', ['買取', '下取'], d['区分']) + '</div>' +
+      '<div class="grid2"><div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">区分' + seg('区分', ['買取', '下取'], d['区分']) + '</div>' +
+      '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">軽・普通' + seg('軽・普通', ['軽', '普通'], d['軽・普通']) + '</div></div>' +
       '<label class="f">車名<input class="in" data-f="車名" list="models" value="' + esc(d['車名']) + '"></label><datalist id="models">' + models.map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
       '<div class="grid2">' + fld('走行距離', 'num', '走行距離（km）') + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所') + '</div>' +
     '</section>' +
@@ -438,15 +467,18 @@ function showForm() {
       (d._owner !== '本人' ? '<label class="f">所有者名（所有権解除が必要になります）<input class="in" data-f="_ownerName" value="' + esc(d._ownerName) + '"></label>' : '') +
     '</section>' +
     '<section class="sec"><h2>処分方法（あとで変更できます）</h2>' + seg('処分方法', METHODS, d['処分方法']) + '</section>' +
+    '<section class="sec"><h2>抹消・名変（あとで決めてもOK）</h2>' + seg('名義処理', ['未定'].concat(MEIGI), d['名義処理']) + '</section>' +
     '<section class="sec"><h2>受け取った書類</h2><div class="grid2" style="row-gap:0">' +
-      DOCS.map(k => '<label class="ck"><input type="checkbox" data-doc="' + esc(k) + '"' + (d['doc_' + k] ? ' checked' : '') + '>' + esc(k) + '</label>').join('') + '</div>' +
+      DOCS.filter(k => !(d['軽・普通'] === '軽' && KEI_FREE.includes(k))).map(k => '<label class="ck"><input type="checkbox" data-doc="' + esc(k) + '"' + (d['doc_' + k] ? ' checked' : '') + '>' + esc(k) + '</label>').join('') + '</div>' +
+      (d['軽・普通'] === '軽' ? '<span class="muted">軽自動車なので、委任状・譲渡証・印鑑証明は不要です</span>' : '') +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">住民票・戸籍の附票（住所・氏名の変更があるとき）' + seg('_jumin', ['不要', '受取済', '未着'], d._jumin) + '</div>' +
     '</section><p class="err" id="formErr"></p></main>' +
     '<div class="bar"><button class="btn p" type="button" id="submit">マスターに登録</button></div></div>';
 
-  app.querySelectorAll('[data-f]').forEach(el => el.addEventListener('input', () => {
-    d[el.dataset.f] = el.value;
-  }));
+  app.querySelectorAll('[data-f]').forEach(el => {
+    el.addEventListener('input', () => { d[el.dataset.f] = el.value; });
+    if (el.dataset.date) el.addEventListener('change', () => { el.value = toWareki(el.value); d[el.dataset.f] = el.value; });
+  });
   app.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('change', () => { d['doc_' + el.dataset.doc] = el.checked; }));
   app.querySelectorAll('[data-seg]').forEach(el => el.addEventListener('click', () => { d[el.dataset.seg] = el.dataset.v; showForm(); }));
   document.getElementById('submit').addEventListener('click', submitForm);
@@ -455,14 +487,15 @@ async function submitForm() {
   const d = S.draft, err = document.getElementById('formErr');
   if (!String(d['車名'] || '').trim() && !String(d['登録番号'] || '').trim()) { err.textContent = '車名か登録番号を入力してください'; return; }
   err.textContent = '';
-  const keys = ['区分', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
+  const keys = ['区分', '軽・普通', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
   if (d['区分'] === '下取') keys.push('新車注文No', '新車納車');
   const data = {};
   keys.forEach(k => { if (d[k] !== undefined && d[k] !== '') data[k] = d[k]; });
   if (d['区分'] === '下取' && !data['支払']) data['支払'] = '値引充当';
+  if (d['名義処理'] && d['名義処理'] !== '未定') data['名義処理'] = d['名義処理'];
   if (d._owner === '本人') data['要否'] = '不要';
   else { data['要否'] = '要'; data['所有者'] = d._ownerName || d._owner; data['解除状況'] = '依頼前'; }
-  DOCS.forEach(k => data[k] = d['doc_' + k] ? '○' : '×');
+  DOCS.forEach(k => data[k] = d['軽・普通'] === '軽' && KEI_FREE.includes(k) ? '不要' : d['doc_' + k] ? '○' : '×');
   data['住民票等'] = { '不要': '不要', '受取済': '○', '未着': '×' }[d._jumin];
   loading(true);
   try {
@@ -492,7 +525,6 @@ function steps(m, s) {
   const meth = m['処分方法'];
   s = s || {};
   if (meth === '出品') {
-    if (m['抹消種類'] === '一時') add('一時抹消', m['完了日'] ? '完了 ' + md(m['完了日']) : m['申請日'] ? '申請 ' + md(m['申請日']) : '未申請', m['完了日']);
     add('陸送', s['陸送依頼'] ? '依頼 ' + md(s['陸送依頼']) + ' ・ 引取' + (s['引取日'] ? ' ' + md(s['引取日']) : '予定 ' + (md(s['引取予定']) || '未定')) : '未手配', s['引取日']);
     add('出品', [s['会場'], md(s['出品予定'])].filter(Boolean).join(' ・ '), s['結果'] === '落札');
     add('落札・入金', s['結果'] ? s['結果'] + (s['落札額'] ? ' ' + yen(s['落札額']) : '') + (s['入金日'] ? ' ・ 入金 ' + md(s['入金日']) : '') : '', s['入金日']);
@@ -501,10 +533,16 @@ function steps(m, s) {
     add('解体証明', md(s['解体証明']), s['解体証明']);
   } else if (meth === '再販') {
     add('仕上げ作業', [s['作業内容'], s['作業完了'] ? '完了 ' + md(s['作業完了']) : '予定 ' + (md(s['仕上がり予定']) || '未定')].filter(Boolean).join(' ・ '), s['作業完了']);
-    add('展示', [s['展示場所'], md(s['展示予定'])].filter(Boolean).join(' ・ '), s['作業完了'] && s['展示予定'] && s['展示予定'] <= today());
+    add('展示', [s['展示場所'], md(s['展示予定'])].filter(Boolean).join(' ・ '), s['作業完了'] && s['展示予定'] && wKey(s['展示予定']) <= wKey(today()));
     add('販売', s['販売日'] ? md(s['販売日']) + (s['販売価格'] ? ' ・ ' + yen(s['販売価格']) : '') : '', s['販売日']);
   } else {
     add('処分方法を決める', '出品・解体・再販から選択', false);
+  }
+  // どの処分方法でも、最後に抹消か名変（またはお客様名義のまま）
+  if (meth && meth !== '未定') {
+    const k = m['名義処理'];
+    if (k === 'お客様名義のまま') add('名義', 'お客様名義のまま', true);
+    else add(k || '抹消・名変', m['完了日'] ? '完了 ' + md(m['完了日']) : m['申請日'] ? '申請 ' + md(m['申請日']) : k ? '未申請' : '抹消か名変かを決める', m['完了日']);
   }
   let nowSet = false;
   st.forEach(x => { x.state = x.done ? 'done' : nowSet ? 'next' : (nowSet = true, 'now'); });
@@ -541,7 +579,7 @@ function renderDetail() {
       (s ? group(meth + 'の進捗', 'sub', F[meth] || [], /陸送|出品|落札|引取|解体|仕上げ|展示|販売/.test(cur)) : '') +
       group('書類', 'master', F.docs, cur === '書類', m['書類判定'] && m['書類判定'] !== '揃い' ? ' <span class="chip ng">' + esc(m['書類判定']) + '</span>' : '') +
       group('所有権解除', 'master', F.owner, cur === '所有権解除') +
-      group('抹消', 'master', F.massho, cur === '一時抹消') +
+      group('名義（抹消・名変）', 'master', F.meigi, /抹消|名変|名義/.test(cur)) +
       group('金額・支払', 'master', F.money, false) +
       group('基本情報', 'master', F.basic, false) +
       '<details class="sec"' + (cur === '処分方法を決める' ? ' open' : '') + '><summary>処分方法を変更</summary><div class="body">' +
@@ -557,6 +595,7 @@ function renderDetail() {
 
   app.querySelectorAll('[data-scope]').forEach(el => el.addEventListener('change', () => {
     const scope = el.dataset.scope, k = el.dataset.k;
+    if (el.dataset.date) el.value = toWareki(el.value);
     const orig = (scope === 'master' ? m : s || {})[k];
     if (String(orig == null ? '' : orig) === el.value) delete ed[scope][k]; else ed[scope][k] = el.value;
     const open = Array.from(app.querySelectorAll('details')).map(x => x.open);

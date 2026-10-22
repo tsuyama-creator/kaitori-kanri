@@ -464,13 +464,13 @@ function showForm() {
   const qrs = d._qr || [];
   const models = Array.from(new Set(Object.values(S.options.models || {})));
   app.innerHTML =
-    '<div class="wrap"><div class="top"><div class="row"><a class="icon" href="#/scan" aria-label="戻る">' + svgBack + '</a><h2 class="grow" style="font-size:17px">車両を登録</h2><span class="muted" style="padding-right:8px">管理Noは自動</span></div></div>' +
+    '<div class="wrap"><div class="top"><div class="row"><a class="icon" href="#/scan" aria-label="戻る">' + svgBack + '</a><h2 class="grow" style="font-size:17px">車両を登録</h2></div></div>' +
     '<main>' + (qrs.length ? '<div class="ok-banner">QRコードから' + qrs.length + '項目を入力しました</div>' : '') +
     '<section class="sec"><h2>車検証' + (qrs.length ? '（QR）' : '') + '</h2>' +
       fld('登録番号', 'text', '', qrs.includes('登録番号')) + fld('車台番号', 'text', '', qrs.includes('車台番号')) +
       fld('車検満了', 'date', '', qrs.includes('車検満了')) +
     '</section>' +
-    '<section class="sec"><h2>入庫情報</h2>' +
+    '<section class="sec"><h2>入庫情報</h2>' + fld('管理No', 'text', '管理No（空欄なら自動で振ります）') +
       '<div class="grid2"><div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">区分' + seg('区分', ['買取', '下取'], d['区分']) + '</div>' +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">軽・普通' + seg('軽・普通', ['軽', '普通'], d['軽・普通']) + '</div></div>' +
       '<label class="f">車名<span style="font-size:11px">※同一型式の場合別車名が出る場合があるので修正してください</span><input class="in" data-f="車名" list="models" value="' + esc(d['車名']) + '"></label><datalist id="models">' + models.map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
@@ -503,7 +503,7 @@ async function submitForm() {
   const d = S.draft, err = document.getElementById('formErr');
   if (!String(d['車名'] || '').trim() && !String(d['登録番号'] || '').trim()) { err.textContent = '車名か登録番号を入力してください'; return; }
   err.textContent = '';
-  const keys = ['区分', '軽・普通', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
+  const keys = ['管理No', '区分', '軽・普通', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
   if (d['区分'] === '下取') keys.push('新車注文No', '新車納車');
   const data = {};
   keys.forEach(k => { if (d[k] !== undefined && d[k] !== '') data[k] = d[k]; });

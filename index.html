@@ -107,7 +107,7 @@ const F = {
   owner: [['要否','enum:不要,要'],['所有者','text'],['残債','enum:無,有'],['精算日','date'],['依頼日','date'],['解除書類','enum:未着,着'],['解除状況','enum:依頼前,依頼中,完了']],
   meigi: [['名義処理','enum:' + MEIGI.join(',')],['郵送日','date'],['完了日','date']],
   money: [['査定額','yen'],['買取額','yen'],['支払予定','date'],['支払','enum:未,済,値引充当'],['新車注文No','text'],['新車納車','date']],
-  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['お客様名','text'],['車検証名義','enum:同一名義,別名義'],['車検証名義人','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所'],['備考','text']],
+  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['お客様名','text'],['車検証名義人','holder'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所'],['備考','text']],
   '出品': [['会場','list:会場'],['出品予定','date'],['陸送業者','list:陸送業者'],['陸送依頼','date'],['引取予定','date'],['引取日','date'],['出品番号','text'],['結果','enum:落札,流札,取消'],['落札額','yen'],['入金予定','date'],['入金日','date'],['備考','text']],
   '解体': [['解体業者','list:解体業者'],['引取場所','list:保管場所'],['引取予定','date'],['引取日','date'],['スクラップ額','yen'],['備考','text']],
   '再販': [['作業内容','text'],['作業先','list:作業先'],['作業開始','date'],['仕上がり予定','date'],['作業完了','date'],['展示場所','list:保管場所'],['展示予定','date'],['販売価格','yen'],['販売日','date'],['備考','text']]
@@ -439,6 +439,13 @@ function newDraft() {
 function control(name, type, value, attrs, extraCls) {
   const v = value == null ? '' : value;
   const cls = 'in' + (extraCls ? ' ' + extraCls : '');
+  // 車検証名義人：同一名義なら「同一」、別名義なら名前を入力
+  if (type === 'holder') {
+    const mode = v === '同一' ? '同一名義' : v ? '別名義' : ((S.detail && S.detail.holderMode) || '');
+    return '<div class="seg" role="group">' + ['同一名義', '別名義'].map(o => '<button type="button" class="so' + (o === mode ? ' on' : '') +
+      '" aria-pressed="' + (o === mode) + '" data-holder="' + o + '">' + o + '</button>').join('') + '</div>' +
+      (mode === '別名義' ? '<input class="' + cls + '" placeholder="車検証の名義人" ' + attrs + ' value="' + esc(v === '同一' ? '' : v) + '">' : '');
+  }
   // 日付：西暦のカレンダーで選び、横に和暦の年を表示。保存は和暦（R8.04.12）
   if (type === 'date') return '<div class="dwrap"><input class="' + cls + '" type="date" data-date="1" ' + attrs + ' value="' + esc(wKey(toWareki(v))) + '">' +
     '<span class="era">' + esc(eraLabel(toWareki(v))) + '</span></div>';
@@ -507,12 +514,14 @@ async function submitForm() {
   const d = S.draft, err = document.getElementById('formErr');
   if (!String(d['車名'] || '').trim() && !String(d['登録番号'] || '').trim()) { err.textContent = '車名か登録番号を入力してください'; return; }
   err.textContent = '';
-  const keys = ['管理No', '区分', '軽・普通', 'お客様名', '車検証名義', '車検証名義人', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
+  const keys = ['管理No', '区分', '軽・普通', 'お客様名', '車検証名義人', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
   if (d['区分'] === '下取') keys.push('新車注文No', '新車納車');
   const data = {};
   keys.forEach(k => { if (d[k] !== undefined && d[k] !== '') data[k] = d[k]; });
   if (d['区分'] === '下取' && !data['支払']) data['支払'] = '値引充当';
-  if (d['車検証名義'] !== '別名義') delete data['車検証名義人'];
+  if (d['車検証名義'] === '別名義') {
+    if (!String(d['車検証名義人'] || '').trim()) { err.textContent = '別名義のときは車検証の名義人を入力してください'; return; }
+  } else data['車検証名義人'] = '同一';
   if (d['名義処理'] && d['名義処理'] !== '未定') data['名義処理'] = d['名義処理'];
   if (d._owner === '本人') data['要否'] = '不要';
   else { data['要否'] = '要'; data['所有者'] = d._ownerName || d._owner; data['解除状況'] = '依頼前'; }
@@ -626,6 +635,19 @@ function renderDetail() {
     renderDetail();
     app.querySelectorAll('details').forEach((x, i) => { x.open = open[i]; });
     window.scrollTo(0, y);
+  }));
+  app.querySelectorAll('[data-holder]').forEach(el => el.addEventListener('click', ev => {
+    ev.preventDefault();
+    const same = el.dataset.holder === '同一名義', orig = m['車検証名義人'] || '';
+    D.holderMode = el.dataset.holder;
+    const cur = ('車検証名義人' in ed.master) ? ed.master['車検証名義人'] : orig;
+    const next = same ? '同一' : (cur === '同一' ? '' : cur);
+    if (next === orig) delete ed.master['車検証名義人']; else ed.master['車検証名義人'] = next;
+    const open = Array.from(app.querySelectorAll('details')).map(x => x.open), y = window.scrollY;
+    renderDetail();
+    app.querySelectorAll('details').forEach((x, i) => { x.open = open[i]; });
+    window.scrollTo(0, y);
+    const inp = app.querySelector('input[data-k="車検証名義人"]'); if (inp && !same) inp.focus();
   }));
   app.querySelectorAll('[data-seg="_method"]').forEach(el => el.addEventListener('click', () => {
     D.newMethod = el.dataset.v; D.reason = (document.getElementById('reason') || {}).value || '';

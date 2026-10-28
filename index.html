@@ -107,7 +107,7 @@ const F = {
   owner: [['要否','enum:不要,要'],['所有者','text'],['残債','enum:無,有'],['精算日','date'],['依頼日','date'],['解除書類','enum:未着,着'],['解除状況','enum:依頼前,依頼中,完了']],
   meigi: [['名義処理','enum:' + MEIGI.join(',')],['郵送日','date'],['完了日','date']],
   money: [['査定額','yen'],['買取額','yen'],['支払予定','date'],['支払','enum:未,済,値引充当'],['新車注文No','text'],['新車納車','date']],
-  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['お客様名','text'],['車検証名義人','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所'],['備考','text']],
+  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['お客様名','text'],['車検証名義','enum:同一名義,別名義'],['車検証名義人','text'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所'],['備考','text']],
   '出品': [['会場','list:会場'],['出品予定','date'],['陸送業者','list:陸送業者'],['陸送依頼','date'],['引取予定','date'],['引取日','date'],['出品番号','text'],['結果','enum:落札,流札,取消'],['落札額','yen'],['入金予定','date'],['入金日','date'],['備考','text']],
   '解体': [['解体業者','list:解体業者'],['引取場所','list:保管場所'],['引取予定','date'],['引取日','date'],['スクラップ額','yen'],['備考','text']],
   '再販': [['作業内容','text'],['作業先','list:作業先'],['作業開始','date'],['仕上がり予定','date'],['作業完了','date'],['展示場所','list:保管場所'],['展示予定','date'],['販売価格','yen'],['販売日','date'],['備考','text']]
@@ -432,7 +432,7 @@ function finishScan() {
 
 /* ===== ③ 登録 ===== */
 function newDraft() {
-  const d = { '区分': '買取', '軽・普通': '軽', '入庫日': today(), '処分方法': '未定', '名義処理': '未定', _owner: '本人', _jumin: '不要', _qr: [] };
+  const d = { '区分': '買取', '車検証名義': '同一名義', '軽・普通': '軽', '入庫日': today(), '処分方法': '未定', '名義処理': '未定', _owner: '本人', _jumin: '不要', _qr: [] };
   DOCS.forEach(k => d['doc_' + k] = k === '車検証');
   return d;
 }
@@ -474,8 +474,9 @@ function showForm() {
       '<div class="grid2"><div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">区分' + seg('区分', ['買取', '下取'], d['区分']) + '</div>' +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">軽・普通' + seg('軽・普通', ['軽', '普通'], d['軽・普通']) + '</div></div>' +
       '<label class="f">車名<span style="font-size:11px">※同一型式の場合別車名が出る場合があるので修正してください</span><input class="in" data-f="車名" list="models" value="' + esc(d['車名']) + '"></label><datalist id="models">' + models.map(m => '<option value="' + esc(m) + '">').join('') + '</datalist>' +
-      '<div class="grid2">' + fld('お客様名', 'text', '買い取ったお客様名') + fld('車検証名義人', 'text', '車検証の名義人') + '</div>' +
-      (d['お客様名'] && d['車検証名義人'] && d['お客様名'].trim() !== d['車検証名義人'].trim() ? '<span class="chip wt" style="align-self:flex-start">お客様と名義人が違います</span>' : '') +
+      fld('お客様名', 'text', '買い取ったお客様名') +
+      '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">車検証の名義' + seg('車検証名義', ['同一名義', '別名義'], d['車検証名義']) + '</div>' +
+      (d['車検証名義'] === '別名義' ? fld('車検証名義人', 'text', '車検証の名義人') : '') +
       '<div class="grid2">' + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所') + fld('走行距離', 'num', '走行距離（km）') + '</div>' +
     '</section>' +
     '<section class="sec"><h2>金額</h2><div class="grid2">' + fld('査定額', 'yen') + fld('買取額', 'yen') + '</div>' +
@@ -498,8 +499,7 @@ function showForm() {
     if (el.dataset.date) el.nextElementSibling.textContent = eraLabel(d[el.dataset.f]);
   }));
   app.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('change', () => { d['doc_' + el.dataset.doc] = el.checked; }));
-  // お客様名・名義人を入れ終えたら、違うかどうかの表示を更新
-  app.querySelectorAll('[data-f="お客様名"],[data-f="車検証名義人"]').forEach(el => el.addEventListener('change', () => { const y = window.scrollY; showForm(); window.scrollTo(0, y); }));
+
   app.querySelectorAll('[data-seg]').forEach(el => el.addEventListener('click', () => { d[el.dataset.seg] = el.dataset.v; showForm(); }));
   document.getElementById('submit').addEventListener('click', submitForm);
 }
@@ -507,11 +507,12 @@ async function submitForm() {
   const d = S.draft, err = document.getElementById('formErr');
   if (!String(d['車名'] || '').trim() && !String(d['登録番号'] || '').trim()) { err.textContent = '車名か登録番号を入力してください'; return; }
   err.textContent = '';
-  const keys = ['管理No', '区分', '軽・普通', 'お客様名', '車検証名義人', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
+  const keys = ['管理No', '区分', '軽・普通', 'お客様名', '車検証名義', '車検証名義人', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
   if (d['区分'] === '下取') keys.push('新車注文No', '新車納車');
   const data = {};
   keys.forEach(k => { if (d[k] !== undefined && d[k] !== '') data[k] = d[k]; });
   if (d['区分'] === '下取' && !data['支払']) data['支払'] = '値引充当';
+  if (d['車検証名義'] !== '別名義') delete data['車検証名義人'];
   if (d['名義処理'] && d['名義処理'] !== '未定') data['名義処理'] = d['名義処理'];
   if (d._owner === '本人') data['要否'] = '不要';
   else { data['要否'] = '要'; data['所有者'] = d._ownerName || d._owner; data['解除状況'] = '依頼前'; }

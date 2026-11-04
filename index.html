@@ -94,7 +94,10 @@ label.f{font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4
 <script>
 /* ===== 設定 ===== */
 const API_URL = 'https://script.google.com/macros/s/AKfycby9kQ1lx5GKsgcHJeVAE8-HzpNHOL8K_S6bCogx83ayCBr2LlVHbCDFhOds1o_aPQ6TNg/exec'; // GASのウェブアプリURL
-const TOKEN = '13QIDk_QVNlkQlqzMaaW8lHc';                                            // Code.gs の TOKEN と同じ値
+// 合言葉はHTMLに書かず、初回に各自が入力して、このスマホ（ブラウザ）に保存する。Code.gs の TOKEN と同じ値を入れてもらう
+function getToken() { try { return localStorage.getItem('kaitori_token') || ''; } catch (e) { return ''; } }
+function setToken(t) { try { localStorage.setItem('kaitori_token', t); } catch (e) {} }
+function clearToken() { try { localStorage.removeItem('kaitori_token'); } catch (e) {} }
 const SHEET_URL = '';                                                 // スプレッドシートのURL（任意）
 
 /* ===== 項目定義（Code.gs と同じ見出し） ===== */
@@ -173,13 +176,32 @@ function loading(on) {
   if (!on && el) el.remove();
 }
 async function api(action, params = {}, post = false) {
-  if (API_URL.includes('XXXXXXXX')) throw new Error('index.html の API_URL を設定してください');
+  const token = getToken();
   const res = post
-    ? await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, token: TOKEN }, params)) })
-    : await fetch(API_URL + '?' + new URLSearchParams(Object.assign({ action, token: TOKEN }, params)));
+    ? await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, token: token }, params)) })
+    : await fetch(API_URL + '?' + new URLSearchParams(Object.assign({ action, token: token }, params)));
   const j = await res.json();
-  if (!j.ok) throw new Error(j.error || 'エラーが発生しました');
+  if (!j.ok) {
+    if (/認証/.test(j.error || '')) { clearToken(); const e = new Error('auth'); e.auth = true; throw e; }
+    throw new Error(j.error || 'エラーが発生しました');
+  }
   return j;
+}
+// 合言葉の入力画面（初回、または合言葉が違ったとき）
+function showPasscode(msg) {
+  app.innerHTML =
+    '<div class="wrap"><main style="min-height:70vh;justify-content:center">' +
+    '<section class="sec" style="gap:14px">' +
+    '<h2>合言葉を入力</h2>' +
+    '<p class="muted" style="margin:0;line-height:1.7">このアプリを使うには合言葉が必要です。一度入力すると、このスマホでは次回から省略されます。合言葉は担当者にお聞きください。</p>' +
+    (msg ? '<p class="err" style="margin:0">' + esc(msg) + '</p>' : '') +
+    '<input class="in" id="pass" type="password" autocomplete="off" placeholder="合言葉">' +
+    '<button class="btn p" type="button" id="passok">決定</button>' +
+    '</section></main></div>';
+  const submit = () => { const v = document.getElementById('pass').value.trim(); if (!v) return; setToken(v); S.rows = null; route(); };
+  document.getElementById('passok').addEventListener('click', submit);
+  document.getElementById('pass').addEventListener('keydown', ev => { if (ev.key === 'Enter') submit(); });
+  document.getElementById('pass').focus();
 }
 async function loadList(showSpinner) {
   if (showSpinner) loading(true);
@@ -205,6 +227,7 @@ async function route() {
     else if (h.indexOf('/car/') === 0) await showDetail(h.slice(5));
     else showList();
   } catch (e) {
+    if (e && e.auth) { showPasscode('合言葉が違います。もう一度入力してください。'); return; }
     app.innerHTML = '<div class="wrap"><main><div class="alert"><b>読み込めませんでした</b><span>' + esc(e.message) + '</span></div>' +
       '<button class="btn s" type="button" onclick="S.rows=null;route()">再読み込み</button></main></div>';
   }
@@ -680,7 +703,7 @@ function renderDetail() {
   if (discard) discard.addEventListener('click', () => { D.edits = { master: {}, sub: {} }; renderDetail(); });
 }
 
-route();
+if (getToken()) route(); else showPasscode('');
 </script>
 </body>
 </html>

@@ -517,6 +517,11 @@ function showForm() {
     '</section>' +
     '<section class="sec"><h2>処分方法（あとで変更できます）</h2>' + seg('処分方法', METHODS, d['処分方法']) + '</section>' +
     '<section class="sec"><h2>抹消・名変（あとで決めてもOK）</h2>' + seg('名義処理', ['未定'].concat(MEIGI), d['名義処理']) + '</section>' +
+    '<section class="sec"><h2>写真</h2>' +
+      '<div id="photos" style="display:flex;flex-wrap:wrap;gap:8px"></div>' +
+      '<label class="btn s" style="cursor:pointer">写真を追加<input type="file" accept="image/*" multiple id="photoadd" style="display:none"></label>' +
+      (d['区分'] === '下取' ? '<span class="muted">下取りは登録すると写真付きでLINE WORKSに投稿されます</span>' : '') +
+    '</section>' +
     '<section class="sec"><h2>受け取った書類</h2><div class="grid2" style="row-gap:0">' +
       DOCS.filter(k => !(d['軽・普通'] === '軽' && KEI_FREE.includes(k))).map(k => '<label class="ck"><input type="checkbox" data-doc="' + esc(k) + '"' + (d['doc_' + k] ? ' checked' : '') + '>' + esc(k) + '</label>').join('') + '</div>' +
       (d['軽・普通'] === '軽' ? '<span class="muted">軽自動車なので、委任状・譲渡証・印鑑証明は不要です</span>' : '') +
@@ -531,7 +536,36 @@ function showForm() {
   app.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('change', () => { d['doc_' + el.dataset.doc] = el.checked; }));
 
   app.querySelectorAll('[data-seg]').forEach(el => el.addEventListener('click', () => { d[el.dataset.seg] = el.dataset.v; showForm(); }));
+  document.getElementById('photoadd').addEventListener('change', e => { addPhotos(e.target.files); e.target.value = ''; });
+  renderPhotos();
   document.getElementById('submit').addEventListener('click', submitForm);
+}
+// 写真を縮小してdraftに溜める（長辺1600px・JPEG）
+function addPhotos(files) {
+  const d = S.draft; d._photos = d._photos || [];
+  Array.from(files).forEach(file => {
+    if (!/^image\//.test(file.type)) return;
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1600; let w = img.width, h = img.height;
+      if (Math.max(w, h) > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      const data = c.toDataURL('image/jpeg', 0.8).split(',')[1];
+      d._photos.push({ name: String(file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', mime: 'image/jpeg', data: data });
+      URL.revokeObjectURL(url); renderPhotos();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); toast('読み込めない画像があります'); };
+    img.src = url;
+  });
+}
+function renderPhotos() {
+  const el = document.getElementById('photos'); if (!el) return;
+  const ps = (S.draft && S.draft._photos) || [];
+  el.innerHTML = ps.map((p, i) => '<div style="position:relative;width:72px;height:72px">' +
+    '<img src="data:' + p.mime + ';base64,' + p.data + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">' +
+    '<button type="button" data-rm="' + i + '" aria-label="削除" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:11px;border:none;background:#A1150D;color:#fff;font-size:15px;line-height:1;cursor:pointer">×</button></div>').join('');
+  el.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { S.draft._photos.splice(+b.dataset.rm, 1); renderPhotos(); }));
 }
 async function submitForm() {
   const d = S.draft, err = document.getElementById('formErr');
@@ -550,11 +584,12 @@ async function submitForm() {
   else { data['要否'] = '要'; data['所有者'] = d._ownerName || d._owner; data['解除状況'] = '依頼前'; }
   DOCS.forEach(k => data[k] = d['軽・普通'] === '軽' && KEI_FREE.includes(k) ? '不要' : d['doc_' + k] ? '○' : '×');
   data['住民票等'] = { '不要': '不要', '受取済': '○', '未着': '×' }[d._jumin];
+  if (d._photos && d._photos.length) data.photos = d._photos;
   loading(true);
   try {
     const j = await api('register', { data }, true);
     S.draft = null; S.scan = null; S.rows = null;
-    toast(j.no + ' を登録しました');
+    toast(j.line === 'ok' ? j.no + ' を登録し、LINEに投稿しました' : j.line === 'error' ? j.no + ' を登録しました（LINE投稿は失敗）' : j.no + ' を登録しました');
     location.hash = '#/car/' + encodeURIComponent(j.no);
   } catch (e) { err.textContent = e.message; } finally { loading(false); }
 }

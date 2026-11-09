@@ -110,7 +110,7 @@ const F = {
   owner: [['要否','enum:不要,要'],['所有者','text'],['残債','enum:無,有'],['精算日','date'],['依頼日','date'],['解除書類','enum:未着,着'],['解除状況','enum:依頼前,依頼中,完了']],
   meigi: [['名義処理','enum:' + MEIGI.join(',')],['郵送日','date'],['完了日','date']],
   money: [['査定額','yen'],['買取額','yen'],['支払予定','date'],['支払','enum:未,済,値引充当'],['新車注文No','text'],['新車納車','date']],
-  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['お客様名','text'],['車検証名義人','holder'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['走行距離','num'],['保管場所','list:保管場所'],['備考','text']],
+  basic: [['区分','enum:買取,下取'],['軽・普通','enum:軽,普通'],['入庫日','date'],['担当','list:担当'],['車名','text'],['お客様名','text'],['車検証名義人','holder'],['登録番号','text'],['車台番号','text'],['車検満了','date'],['グレード','text'],['カラー','text'],['走行距離','num'],['保管場所','list:保管場所'],['備考','text']],
   '出品': [['会場','list:会場'],['出品予定','date'],['陸送業者','list:陸送業者'],['陸送依頼','date'],['引取予定','date'],['引取日','date'],['出品番号','text'],['結果','enum:落札,流札,取消'],['落札額','yen'],['入金予定','date'],['入金日','date'],['備考','text']],
   '解体': [['解体業者','list:解体業者'],['引取場所','list:保管場所'],['引取予定','date'],['引取日','date'],['スクラップ額','yen'],['備考','text']],
   '再販': [['作業内容','text'],['作業先','list:作業先'],['作業開始','date'],['仕上がり予定','date'],['作業完了','date'],['展示場所','list:保管場所'],['展示予定','date'],['販売価格','yen'],['販売日','date'],['備考','text']]
@@ -507,7 +507,7 @@ function showForm() {
       fld('お客様名', 'text', '買い取ったお客様名') +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">車検証の名義' + seg('車検証名義', ['同一名義', '別名義'], d['車検証名義']) + '</div>' +
       (d['車検証名義'] === '別名義' ? fld('車検証名義人', 'text', '車検証の名義人') : '') +
-      '<div class="grid2">' + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所') + fld('走行距離', 'num', '走行距離（km）') + '</div>' +
+      '<div class="grid2">' + fld('グレード', 'text') + fld('カラー', 'text') + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所', '行先（保管場所）') + fld('走行距離', 'num', '走行距離（km）') + '</div>' +
     '</section>' +
     '<section class="sec"><h2>金額</h2><div class="grid2">' + fld('査定額', 'yen') + fld('買取額', 'yen') + '</div>' +
       (d['区分'] === '下取' ? '<div class="grid2">' + fld('新車注文No', 'text') + fld('新車納車', 'date') + '</div>' : '') +
@@ -520,7 +520,7 @@ function showForm() {
     '<section class="sec"><h2>写真</h2>' +
       '<div id="photos" style="display:flex;flex-wrap:wrap;gap:8px"></div>' +
       '<label class="btn s" style="cursor:pointer">写真を追加<input type="file" accept="image/*" multiple id="photoadd" style="display:none"></label>' +
-      (d['区分'] === '下取' ? '<span class="muted">下取りは登録すると写真付きでLINE WORKSに投稿されます</span>' : '') +
+      '<span class="muted">登録すると写真付きでLINE WORKSに投稿されます</span>' +
     '</section>' +
     '<section class="sec"><h2>受け取った書類</h2><div class="grid2" style="row-gap:0">' +
       DOCS.filter(k => !(d['軽・普通'] === '軽' && KEI_FREE.includes(k))).map(k => '<label class="ck"><input type="checkbox" data-doc="' + esc(k) + '"' + (d['doc_' + k] ? ' checked' : '') + '>' + esc(k) + '</label>').join('') + '</div>' +
@@ -571,7 +571,7 @@ async function submitForm() {
   const d = S.draft, err = document.getElementById('formErr');
   if (!String(d['車名'] || '').trim() && !String(d['登録番号'] || '').trim()) { err.textContent = '車名か登録番号を入力してください'; return; }
   err.textContent = '';
-  const keys = ['管理No', '区分', '軽・普通', 'お客様名', '車検証名義人', '入庫日', '担当', '車名', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
+  const keys = ['管理No', '区分', '軽・普通', 'お客様名', '車検証名義人', '入庫日', '担当', '車名', 'グレード', 'カラー', '登録番号', '車台番号', '型式', '車検満了', '走行距離', '保管場所', '査定額', '買取額', '処分方法'];
   if (d['区分'] === '下取') keys.push('新車注文No', '新車納車');
   const data = {};
   keys.forEach(k => { if (d[k] !== undefined && d[k] !== '') data[k] = d[k]; });

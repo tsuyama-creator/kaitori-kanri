@@ -636,14 +636,14 @@ function makeCollage(photos) {
 function showLinePreview(no, text, photoUrl) {
   const photos = (S.draft && S.draft._photos) || [];
   const done = () => { S.draft = null; location.hash = '#/car/' + encodeURIComponent(no); };
-  const compose = note => text + (note.trim() ? '\n\n' + note.trim() : '') + (photoUrl ? '\n写真：' + photoUrl : '');
+  const compose = note => text + (photoUrl ? '\n写真：' + photoUrl : '') + (note.trim() ? '\n\n' + note.trim() : '');
   const ov = document.createElement('div'); ov.className = 'overlay';
   ov.innerHTML = '<div class="modal">' +
     '<h2 style="margin:0">LINEに投稿しますか？</h2>' +
     '<p class="muted" style="margin:0">下の内容でLINE WORKSに投稿します。</p>' +
     (photos.length ? '<div class="pstrip">' + photos.map(p => '<img src="data:' + p.mime + ';base64,' + p.data + '">').join('') + '</div>' : '') +
     '<div class="lineprev" id="lineprev">' + esc(compose('')) + '</div>' +
-    '<label class="f">備考（任意・行先の下に入ります）<textarea class="in" id="linenote" rows="2" placeholder="例：外装キズあり、鍵2本" style="height:auto;min-height:60px;padding:8px 12px;resize:vertical"></textarea></label>' +
+    '<label class="f">備考（任意・一番下に入ります）<textarea class="in" id="linenote" rows="2" placeholder="例：外装キズあり、鍵2本" style="height:auto;min-height:60px;padding:8px 12px;resize:vertical"></textarea></label>' +
     (photos.length > 1 ? '<span class="muted">写真は1枚にまとめて投稿されます</span>' : '') +
     '<div class="mbtns"><button class="btn" type="button" id="lineskip">投稿しない</button><button class="btn p" type="button" id="linego">LINEへ投稿</button></div>' +
     '</div>';

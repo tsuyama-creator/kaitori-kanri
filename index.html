@@ -591,11 +591,14 @@ async function submitForm() {
   else { data['要否'] = '要'; data['所有者'] = d._ownerName || d._owner; data['解除状況'] = '依頼前'; }
   DOCS.forEach(k => data[k] = d['軽・普通'] === '軽' && KEI_FREE.includes(k) ? '不要' : d['doc_' + k] ? '○' : '×');
   data['住民票等'] = { '不要': '不要', '受取済': '○', '未着': '×' }[d._jumin];
-  if (d._photos && d._photos.length) data.photos = d._photos;
+  const photos = (d._photos || []).slice();
+  data.photoCount = photos.length;
   loading(true);
   try {
     const j = await api('register', { data }, true);
     S.scan = null; S.rows = null;
+    // 写真はドライブへ背景で保存（プレビュー表示を待たせない）
+    if (photos.length) api('savePhotos', { no: j.no, name: d['車名'] || '', photos: photos }, true).catch(() => {});
     toast(j.no + ' を登録しました');
     if (j.lineText) showLinePreview(j.no, j.lineText, j.photoUrl || '');   // 買取・下取りでLINE設定済みなら確認画面
     else { S.draft = null; location.hash = '#/car/' + encodeURIComponent(j.no); }
@@ -654,7 +657,7 @@ function showLinePreview(no, text, photoUrl) {
       let image = null;
       if (photos.length === 1) image = { mime: photos[0].mime, data: photos[0].data };
       else if (photos.length > 1) image = await makeCollage(photos);
-      await api('postLine', { no, note: ta.value.trim(), image }, true);
+      await api('postLine', { no, image, text: compose(ta.value.trim()) }, true);
       ov.remove(); toast('LINEに投稿しました'); done();
     } catch (e) { btn.textContent = 'LINEへ投稿'; btn.disabled = false; alert('投稿できませんでした：' + e.message); }
   });

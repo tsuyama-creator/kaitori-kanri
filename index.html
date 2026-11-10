@@ -112,6 +112,35 @@ const METHODS = ['未定', '出品', '解体', '再販', '社用車', 'レンタ
 const KEI_FREE = ['委任状', '譲渡証', '印鑑証明'];   // 軽自動車では不要
 const MEIGI = ['ユーザー名抹消', '移転抹消', '自社名変', 'お客様名義のまま'];
 const DOCS = ['車検証', '自賠責', '印鑑証明', '委任状', '譲渡証', 'リサイクル券', '納税証明'];
+// メーカー公式グレード検索（車台番号で引く。規約同意→入力の作りで、直リンク/APIは無いため人が確認して入力）
+const GRADE_SEARCH = {
+  'トヨタ': 'https://www.toyota.co.jp/grade/dc/search',
+  'ホンダ': 'https://grade.customer.honda.co.jp/apps/grade/hccg0010101/agree',
+  'ダイハツ': 'https://inquiry.daihatsu.co.jp/gradeweb/Default2.aspx',
+  'スズキ': 'https://sgre.suzuki.co.jp/SearchGrade',
+  '日産': 'https://grade-search.nissan.co.jp/GRADE/search.html',
+  '三菱': 'https://inquiry.mitsubishi-motors.co.jp/reference/GradeSearch.do',
+  'スバル': 'https://grade-search.subaru.co.jp/luw/agree.do',
+  'マツダ': 'https://www2.mazda.co.jp/grade-search/search.html'
+};
+// 車名→メーカー（自動判定用。未登録の車名は手動でメーカーを選ぶ）
+const CARMAKER = {
+  'N-BOX': 'ホンダ', 'N-WGN': 'ホンダ',
+  'タント': 'ダイハツ', 'ムーヴ': 'ダイハツ', 'ミラ イース': 'ダイハツ',
+  'ワゴンR': 'スズキ', 'スペーシア': 'スズキ', 'ハスラー': 'スズキ', 'アルト': 'スズキ'
+};
+function gradeSearchBlock(d) {
+  const guess = CARMAKER[d['車名']] || '';
+  const opts = Object.keys(GRADE_SEARCH).map(m =>
+    '<option value="' + GRADE_SEARCH[m] + '"' + (m === guess ? ' selected' : '') + '>' + m + (GRADE_SEARCH[m] ? '' : '（URL未設定）') + '</option>').join('');
+  const chassis = esc(d['車台番号'] || '');
+  return '<div class="f full" style="background:#F6F8FC;border:1px solid #D9E1F2;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px">' +
+    '<span style="font-size:12px;color:var(--sub)">グレードはメーカー公式検索で確認（車台番号で引けます）</span>' +
+    '<div class="row" style="gap:8px"><select class="in" id="gmaker" style="flex:1">' + opts + '</select>' +
+    '<a class="btn s" href="#" onclick="var v=document.getElementById(\'gmaker\').value;if(v){window.open(v,\'_blank\')}else{alert(\'このメーカーの検索URLが未設定です\')}return false;">検索を開く</a></div>' +
+    (chassis ? '<span class="muted" style="font-size:12px">車台番号：<b>' + chassis + '</b>（コピーして入力）</span>' : '') +
+    '</div>';
+}
 const F = {
   docs: [['車検証','doc'],['自賠責','doc'],['印鑑証明','doc'],['印鑑期限','date'],['委任状','doc'],['譲渡証','doc'],['リサイクル券','doc'],['納税証明','doc'],['住民票等','doc']],
   owner: [['要否','enum:不要,要'],['所有者','text'],['残債','enum:無,有'],['精算日','date'],['依頼日','date'],['解除書類','enum:未着,着'],['解除状況','enum:依頼前,依頼中,完了']],
@@ -514,6 +543,7 @@ function showForm() {
       fld('お客様名', 'text', '買い取ったお客様名') +
       '<div class="f" style="font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4px">車検証の名義' + seg('車検証名義', ['同一名義', '別名義'], d['車検証名義']) + '</div>' +
       (d['車検証名義'] === '別名義' ? fld('車検証名義人', 'text', '車検証の名義人') : '') +
+      gradeSearchBlock(d) +
       '<div class="grid2">' + fld('グレード', 'text') + fld('カラー', 'text') + fld('入庫日', 'date') + fld('担当', 'list:担当') + fld('保管場所', 'list:保管場所', '行先（保管場所）') + fld('走行距離', 'num', '走行距離（km）') + '</div>' +
     '</section>' +
     '<section class="sec"><h2>金額</h2><div class="grid2">' + fld('査定額', 'yen') + fld('買取額', 'yen') + '</div>' +

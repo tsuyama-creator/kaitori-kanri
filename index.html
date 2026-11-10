@@ -80,6 +80,13 @@ label.f{font-size:12px;color:var(--sub);display:flex;flex-direction:column;gap:4
 .toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:50;max-width:90vw;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 .loading{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:40;font-size:15px;color:var(--navy);font-weight:700}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:60}
+.modal{background:#fff;width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;max-height:88vh;overflow:auto}
+.lineprev{background:#F4F5F7;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.8;white-space:pre-wrap}
+.pstrip{display:flex;flex-wrap:wrap;gap:8px}
+.pstrip img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.mbtns{display:flex;gap:10px}
+.mbtns .btn{flex:1}
 .grid2 .full{grid-column:1/-1}
 .dwrap{display:flex;align-items:center;gap:8px;min-width:0}
 .dwrap .in{flex:1;min-width:0}
@@ -520,7 +527,7 @@ function showForm() {
     '<section class="sec"><h2>写真</h2>' +
       '<div id="photos" style="display:flex;flex-wrap:wrap;gap:8px"></div>' +
       '<label class="btn s" style="cursor:pointer">写真を追加<input type="file" accept="image/*" multiple id="photoadd" style="display:none"></label>' +
-      '<span class="muted">登録すると写真付きでLINE WORKSに投稿されます</span>' +
+      '<span class="muted">登録後に、LINE投稿の確認画面が出ます</span>' +
     '</section>' +
     '<section class="sec"><h2>受け取った書類</h2><div class="grid2" style="row-gap:0">' +
       DOCS.filter(k => !(d['軽・普通'] === '軽' && KEI_FREE.includes(k))).map(k => '<label class="ck"><input type="checkbox" data-doc="' + esc(k) + '"' + (d['doc_' + k] ? ' checked' : '') + '>' + esc(k) + '</label>').join('') + '</div>' +
@@ -588,10 +595,32 @@ async function submitForm() {
   loading(true);
   try {
     const j = await api('register', { data }, true);
-    S.draft = null; S.scan = null; S.rows = null;
-    toast(j.line === 'ok' ? j.no + ' を登録し、LINEに投稿しました' : j.line === 'error' ? j.no + ' を登録しました（LINE投稿は失敗）' : j.no + ' を登録しました');
-    location.hash = '#/car/' + encodeURIComponent(j.no);
+    S.scan = null; S.rows = null;
+    toast(j.no + ' を登録しました');
+    if (j.lineText) showLinePreview(j.no, j.lineText);   // 買取・下取りでLINE設定済みなら確認画面
+    else { S.draft = null; location.hash = '#/car/' + encodeURIComponent(j.no); }
   } catch (e) { err.textContent = e.message; } finally { loading(false); }
+}
+
+// 登録後のLINE投稿確認（プレビュー＋投稿ボタン）
+function showLinePreview(no, text) {
+  const photos = (S.draft && S.draft._photos) || [];
+  const done = () => { S.draft = null; location.hash = '#/car/' + encodeURIComponent(no); };
+  const ov = document.createElement('div'); ov.className = 'overlay';
+  ov.innerHTML = '<div class="modal">' +
+    '<h2 style="margin:0">LINEに投稿しますか？</h2>' +
+    '<p class="muted" style="margin:0">下の内容でLINE WORKSに投稿します。</p>' +
+    '<div class="lineprev">' + esc(text) + '</div>' +
+    (photos.length ? '<div class="pstrip">' + photos.map(p => '<img src="data:' + p.mime + ';base64,' + p.data + '">').join('') + '</div>' : '') +
+    '<div class="mbtns"><button class="btn" type="button" id="lineskip">投稿しない</button><button class="btn p" type="button" id="linego">LINEへ投稿</button></div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#lineskip').addEventListener('click', () => { ov.remove(); done(); });
+  ov.querySelector('#linego').addEventListener('click', async () => {
+    const btn = ov.querySelector('#linego'); btn.textContent = '送信中…'; btn.disabled = true;
+    try { await api('postLine', { no }, true); ov.remove(); toast('LINEに投稿しました'); done(); }
+    catch (e) { btn.textContent = 'LINEへ投稿'; btn.disabled = false; alert('投稿できませんでした：' + e.message); }
+  });
 }
 
 /* ===== ④ 詳細・進捗 ===== */

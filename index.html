@@ -602,6 +602,33 @@ async function submitForm() {
   } catch (e) { err.textContent = e.message; } finally { loading(false); }
 }
 
+// 複数の写真を1枚のタイル画像にまとめる（LINEは1通1枚のため）
+function makeCollage(photos) {
+  return new Promise(resolve => {
+    const imgs = new Array(photos.length); let loaded = 0;
+    const finish = () => {
+      const n = photos.length, cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
+      const cell = 640, gap = 8;
+      const c = document.createElement('canvas');
+      c.width = cols * cell + (cols + 1) * gap; c.height = rows * cell + (rows + 1) * gap;
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      imgs.forEach((im, i) => {
+        if (!im) return;
+        const x = gap + (i % cols) * (cell + gap), y = gap + Math.floor(i / cols) * (cell + gap);
+        const s = Math.max(cell / im.width, cell / im.height), w = im.width * s, h = im.height * s;
+        ctx.save(); ctx.beginPath(); ctx.rect(x, y, cell, cell); ctx.clip();
+        ctx.drawImage(im, x + (cell - w) / 2, y + (cell - h) / 2, w, h); ctx.restore();
+      });
+      resolve({ mime: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.8).split(',')[1] });
+    };
+    photos.forEach((p, i) => {
+      const im = new Image();
+      im.onload = () => { imgs[i] = im; if (++loaded === photos.length) finish(); };
+      im.onerror = () => { imgs[i] = null; if (++loaded === photos.length) finish(); };
+      im.src = 'data:' + p.mime + ';base64,' + p.data;
+    });
+  });
+}
 // 登録後のLINE投稿確認（プレビュー＋投稿ボタン）
 function showLinePreview(no, text) {
   const photos = (S.draft && S.draft._photos) || [];
@@ -614,6 +641,7 @@ function showLinePreview(no, text) {
     (photos.length ? '<div class="pstrip">' + photos.map(p => '<img src="data:' + p.mime + ';base64,' + p.data + '">').join('') + '</div>' : '') +
     '<div class="lineprev" id="lineprev">' + esc(text) + '</div>' +
     '<label class="f">備考（任意・行先の下に入ります）<textarea class="in" id="linenote" rows="2" placeholder="例：外装キズあり、鍵2本" style="height:auto;min-height:60px;padding:8px 12px;resize:vertical"></textarea></label>' +
+    (photos.length > 1 ? '<span class="muted">写真は1枚にまとめて投稿されます</span>' : '') +
     '<div class="mbtns"><button class="btn" type="button" id="lineskip">投稿しない</button><button class="btn p" type="button" id="linego">LINEへ投稿</button></div>' +
     '</div>';
   document.body.appendChild(ov);
@@ -622,8 +650,13 @@ function showLinePreview(no, text) {
   ov.querySelector('#lineskip').addEventListener('click', () => { ov.remove(); done(); });
   ov.querySelector('#linego').addEventListener('click', async () => {
     const btn = ov.querySelector('#linego'); btn.textContent = '送信中…'; btn.disabled = true;
-    try { await api('postLine', { no, note: ta.value.trim() }, true); ov.remove(); toast('LINEに投稿しました'); done(); }
-    catch (e) { btn.textContent = 'LINEへ投稿'; btn.disabled = false; alert('投稿できませんでした：' + e.message); }
+    try {
+      let image = null;
+      if (photos.length === 1) image = { mime: photos[0].mime, data: photos[0].data };
+      else if (photos.length > 1) image = await makeCollage(photos);
+      await api('postLine', { no, note: ta.value.trim(), image }, true);
+      ov.remove(); toast('LINEに投稿しました'); done();
+    } catch (e) { btn.textContent = 'LINEへ投稿'; btn.disabled = false; alert('投稿できませんでした：' + e.message); }
   });
 }
 

@@ -606,19 +606,23 @@ async function submitForm() {
 function showLinePreview(no, text) {
   const photos = (S.draft && S.draft._photos) || [];
   const done = () => { S.draft = null; location.hash = '#/car/' + encodeURIComponent(no); };
+  const compose = note => text + (note.trim() ? '\n\n' + note.trim() : '');
   const ov = document.createElement('div'); ov.className = 'overlay';
   ov.innerHTML = '<div class="modal">' +
     '<h2 style="margin:0">LINEに投稿しますか？</h2>' +
     '<p class="muted" style="margin:0">下の内容でLINE WORKSに投稿します。</p>' +
-    '<div class="lineprev">' + esc(text) + '</div>' +
     (photos.length ? '<div class="pstrip">' + photos.map(p => '<img src="data:' + p.mime + ';base64,' + p.data + '">').join('') + '</div>' : '') +
+    '<div class="lineprev" id="lineprev">' + esc(text) + '</div>' +
+    '<label class="f">備考（任意・行先の下に入ります）<textarea class="in" id="linenote" rows="2" placeholder="例：外装キズあり、鍵2本" style="height:auto;min-height:60px;padding:8px 12px;resize:vertical"></textarea></label>' +
     '<div class="mbtns"><button class="btn" type="button" id="lineskip">投稿しない</button><button class="btn p" type="button" id="linego">LINEへ投稿</button></div>' +
     '</div>';
   document.body.appendChild(ov);
+  const ta = ov.querySelector('#linenote'), prev = ov.querySelector('#lineprev');
+  ta.addEventListener('input', () => { prev.textContent = compose(ta.value); });
   ov.querySelector('#lineskip').addEventListener('click', () => { ov.remove(); done(); });
   ov.querySelector('#linego').addEventListener('click', async () => {
     const btn = ov.querySelector('#linego'); btn.textContent = '送信中…'; btn.disabled = true;
-    try { await api('postLine', { no }, true); ov.remove(); toast('LINEに投稿しました'); done(); }
+    try { await api('postLine', { no, note: ta.value.trim() }, true); ov.remove(); toast('LINEに投稿しました'); done(); }
     catch (e) { btn.textContent = 'LINEへ投稿'; btn.disabled = false; alert('投稿できませんでした：' + e.message); }
   });
 }

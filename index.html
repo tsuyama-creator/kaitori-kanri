@@ -579,11 +579,6 @@ function showForm() {
     '</section>' +
     '<section class="sec"><h2>処分方法（あとで変更できます）</h2>' + seg('処分方法', METHODS, d['処分方法']) + '</section>' +
     '<section class="sec"><h2>抹消・名変（あとで決めてもOK）</h2>' + seg('名義処理', ['未定'].concat(MEIGI), d['名義処理']) + '</section>' +
-    '<section class="sec"><h2>写真</h2>' +
-      '<div id="photos" style="display:flex;flex-wrap:wrap;gap:8px"></div>' +
-      '<label class="btn s" style="cursor:pointer">写真を追加<input type="file" accept="image/*" multiple id="photoadd" style="display:none"></label>' +
-      '<span class="muted">登録後に、LINE投稿の確認画面が出ます</span>' +
-    '</section>' +
     '<section class="sec"><h2>受け取った書類</h2><div class="grid2" style="row-gap:0">' +
       DOCS.filter(k => !(d['軽・普通'] === '軽' && KEI_FREE.includes(k))).map(k => '<label class="ck"><input type="checkbox" data-doc="' + esc(k) + '"' + (d['doc_' + k] ? ' checked' : '') + '>' + esc(k) + '</label>').join('') + '</div>' +
       (d['軽・普通'] === '軽' ? '<span class="muted">軽自動車なので、委任状・譲渡証・印鑑証明は不要です</span>' : '') +
@@ -599,36 +594,7 @@ function showForm() {
   app.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('change', () => { d['doc_' + el.dataset.doc] = el.checked; }));
 
   app.querySelectorAll('[data-seg]').forEach(el => el.addEventListener('click', () => { d[el.dataset.seg] = el.dataset.v; showForm(); }));
-  document.getElementById('photoadd').addEventListener('change', e => { addPhotos(e.target.files); e.target.value = ''; });
-  renderPhotos();
   document.getElementById('submit').addEventListener('click', submitForm);
-}
-// 写真を縮小してdraftに溜める（長辺1600px・JPEG）
-function addPhotos(files) {
-  const d = S.draft; d._photos = d._photos || [];
-  Array.from(files).forEach(file => {
-    if (!/^image\//.test(file.type)) return;
-    const img = new Image(), url = URL.createObjectURL(file);
-    img.onload = () => {
-      const max = 1600; let w = img.width, h = img.height;
-      if (Math.max(w, h) > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
-      const c = document.createElement('canvas'); c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0, w, h);
-      const data = c.toDataURL('image/jpeg', 0.8).split(',')[1];
-      d._photos.push({ name: String(file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', mime: 'image/jpeg', data: data });
-      URL.revokeObjectURL(url); renderPhotos();
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); toast('読み込めない画像があります'); };
-    img.src = url;
-  });
-}
-function renderPhotos() {
-  const el = document.getElementById('photos'); if (!el) return;
-  const ps = (S.draft && S.draft._photos) || [];
-  el.innerHTML = ps.map((p, i) => '<div style="position:relative;width:72px;height:72px">' +
-    '<img src="data:' + p.mime + ';base64,' + p.data + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">' +
-    '<button type="button" data-rm="' + i + '" aria-label="削除" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:11px;border:none;background:#A1150D;color:#fff;font-size:15px;line-height:1;cursor:pointer">×</button></div>').join('');
-  el.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { S.draft._photos.splice(+b.dataset.rm, 1); renderPhotos(); }));
 }
 async function submitForm() {
   const d = S.draft, err = document.getElementById('formErr');
@@ -647,75 +613,37 @@ async function submitForm() {
   else { data['要否'] = '要'; data['所有者'] = d._ownerName || d._owner; data['解除状況'] = '依頼前'; }
   DOCS.forEach(k => data[k] = d['軽・普通'] === '軽' && KEI_FREE.includes(k) ? '不要' : d['doc_' + k] ? '○' : '×');
   data['住民票等'] = { '不要': '不要', '受取済': '○', '未着': '×' }[d._jumin];
-  const photos = (d._photos || []).slice();
-  data.photoCount = photos.length;
   loading(true);
   try {
     const j = await api('register', { data }, true);
     S.scan = null; S.rows = null;
-    // 写真はドライブへ背景で保存（プレビュー表示を待たせない）
-    if (photos.length) api('savePhotos', { no: j.no, name: d['車名'] || '', photos: photos }, true).catch(() => {});
     toast(j.no + ' を登録しました');
-    if (j.lineText) showLinePreview(j.no, j.lineText, j.photoUrl || '');   // 買取・下取りでLINE設定済みなら確認画面
+    if (j.lineText) showLineText(j.no, j.lineText);   // 買取・下取りはコピー用テキストを表示
     else { S.draft = null; location.hash = '#/car/' + encodeURIComponent(j.no); }
   } catch (e) { err.textContent = e.message; } finally { loading(false); }
 }
 
-// 複数の写真を1枚のタイル画像にまとめる（LINEは1通1枚のため）
-function makeCollage(photos) {
-  return new Promise(resolve => {
-    const imgs = new Array(photos.length); let loaded = 0;
-    const finish = () => {
-      const n = photos.length, cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
-      const cell = 640, gap = 8;
-      const c = document.createElement('canvas');
-      c.width = cols * cell + (cols + 1) * gap; c.height = rows * cell + (rows + 1) * gap;
-      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-      imgs.forEach((im, i) => {
-        if (!im) return;
-        const x = gap + (i % cols) * (cell + gap), y = gap + Math.floor(i / cols) * (cell + gap);
-        const s = Math.max(cell / im.width, cell / im.height), w = im.width * s, h = im.height * s;
-        ctx.save(); ctx.beginPath(); ctx.rect(x, y, cell, cell); ctx.clip();
-        ctx.drawImage(im, x + (cell - w) / 2, y + (cell - h) / 2, w, h); ctx.restore();
-      });
-      resolve({ mime: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.8).split(',')[1] });
-    };
-    photos.forEach((p, i) => {
-      const im = new Image();
-      im.onload = () => { imgs[i] = im; if (++loaded === photos.length) finish(); };
-      im.onerror = () => { imgs[i] = null; if (++loaded === photos.length) finish(); };
-      im.src = 'data:' + p.mime + ';base64,' + p.data;
-    });
-  });
-}
-// 登録後のLINE投稿確認（プレビュー＋投稿ボタン）
-function showLinePreview(no, text, photoUrl) {
-  const photos = (S.draft && S.draft._photos) || [];
+// 登録後、LINE用テキストを表示してコピーできるようにする（自動投稿はしない）
+function showLineText(no, text) {
   const done = () => { S.draft = null; location.hash = '#/car/' + encodeURIComponent(no); };
-  const compose = note => text + (photoUrl ? '\n写真：' + photoUrl : '') + (note.trim() ? '\n\n' + note.trim() : '');
+  const compose = note => text + (note.trim() ? '\n\n' + note.trim() : '');
   const ov = document.createElement('div'); ov.className = 'overlay';
   ov.innerHTML = '<div class="modal">' +
-    '<h2 style="margin:0">LINEに投稿しますか？</h2>' +
-    '<p class="muted" style="margin:0">下の内容でLINE WORKSに投稿します。</p>' +
-    (photos.length ? '<div class="pstrip">' + photos.map(p => '<img src="data:' + p.mime + ';base64,' + p.data + '">').join('') + '</div>' : '') +
+    '<h2 style="margin:0">LINE用のテキスト</h2>' +
+    '<p class="muted" style="margin:0">コピーしてLINEに貼り付けてください。</p>' +
     '<div class="lineprev" id="lineprev">' + esc(compose('')) + '</div>' +
     '<label class="f">備考（任意・一番下に入ります）<textarea class="in" id="linenote" rows="2" placeholder="例：外装キズあり、鍵2本" style="height:auto;min-height:60px;padding:8px 12px;resize:vertical"></textarea></label>' +
-    (photos.length > 1 ? '<span class="muted">写真は1枚にまとめて投稿されます</span>' : '') +
-    '<div class="mbtns"><button class="btn" type="button" id="lineskip">投稿しない</button><button class="btn p" type="button" id="linego">LINEへ投稿</button></div>' +
+    '<div class="mbtns"><button class="btn" type="button" id="lineskip">閉じる</button><button class="btn p" type="button" id="linecopy">テキストをコピー</button></div>' +
     '</div>';
   document.body.appendChild(ov);
   const ta = ov.querySelector('#linenote'), prev = ov.querySelector('#lineprev');
   ta.addEventListener('input', () => { prev.textContent = compose(ta.value); });
   ov.querySelector('#lineskip').addEventListener('click', () => { ov.remove(); done(); });
-  ov.querySelector('#linego').addEventListener('click', async () => {
-    const btn = ov.querySelector('#linego'); btn.textContent = '送信中…'; btn.disabled = true;
-    try {
-      let image = null;
-      if (photos.length === 1) image = { mime: photos[0].mime, data: photos[0].data };
-      else if (photos.length > 1) image = await makeCollage(photos);
-      await api('postLine', { no, image, text: compose(ta.value.trim()) }, true);
-      ov.remove(); toast('LINEに投稿しました'); done();
-    } catch (e) { btn.textContent = 'LINEへ投稿'; btn.disabled = false; alert('投稿できませんでした：' + e.message); }
+  ov.querySelector('#linecopy').addEventListener('click', () => {
+    const b = ov.querySelector('#linecopy'), t = compose(ta.value);
+    const ok = () => { b.textContent = 'コピーしました'; setTimeout(() => { b.textContent = 'テキストをコピー'; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, () => fallbackCopy(t, ok));
+    else fallbackCopy(t, ok);
   });
 }
 

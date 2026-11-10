@@ -133,17 +133,19 @@ function gradeSearchBlock(d) {
   const guess = CARMAKER[d['車名']] || '';
   const opts = Object.keys(GRADE_SEARCH).map(m =>
     '<option value="' + GRADE_SEARCH[m] + '"' + (m === guess ? ' selected' : '') + '>' + m + (GRADE_SEARCH[m] ? '' : '（URL未設定）') + '</option>').join('');
-  const parts = String(d['車台番号'] || '').split(/[-－ー‐―]/).map(s => s.trim()).filter(Boolean);
-  const chip = p => '<button type="button" onclick="copyText(this,\'' + esc(p) + '\')" style="border:1px solid #C9CDD2;background:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer">' + esc(p) + '<span style="font-size:11px;font-weight:400;color:var(--sub)">タップでコピー</span></button>';
-  const chips = parts.length
-    ? '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span class="muted" style="font-size:12px">車台番号：</span>' + parts.map(chip).join('') + '</div>'
-    : '';
   return '<div class="f full" style="background:#F6F8FC;border:1px solid #D9E1F2;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px">' +
     '<span style="font-size:12px;color:var(--sub)">グレードはメーカー公式検索で確認（車台番号で引けます）</span>' +
-    '<div class="row" style="gap:8px"><select class="in" id="gmaker" style="flex:1">' + opts + '</select>' +
-    '<a class="btn s" href="#" onclick="var v=document.getElementById(\'gmaker\').value;if(v){window.open(v,\'_blank\')}else{alert(\'このメーカーの検索URLが未設定です\')}return false;">検索を開く</a></div>' +
-    chips +
+    '<div class="row" style="gap:8px"><select class="in" id="gmaker" style="flex:1;min-width:0">' + opts + '</select>' +
+    '<a class="btn s" href="#" style="flex:1;min-width:0;text-align:center;font-size:13px;line-height:1.2;padding:0 8px;display:flex;align-items:center;justify-content:center" onclick="var v=document.getElementById(\'gmaker\').value;if(v){window.open(v,\'_blank\')}else{alert(\'このメーカーの検索URLが未設定です\')}return false;">グレード検索ページを開く</a></div>' +
+    '<div id="chassischips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' + chassisChipsHtml(d['車台番号']) + '</div>' +
     '</div>';
+}
+// 車台番号をハイフンで分割し、タップでコピーできるチップにする（手打ちでも反映できるよう関数化）
+function chassisChipsHtml(val) {
+  const parts = String(val || '').split(/[-－ー‐―]/).map(s => s.trim()).filter(Boolean);
+  if (!parts.length) return '<span class="muted" style="font-size:12px">車台番号を入れると分割表示されます</span>';
+  const chip = p => '<button type="button" onclick="copyText(this,\'' + esc(p) + '\')" style="border:1px solid #C9CDD2;background:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer">' + esc(p) + '<span style="font-size:11px;font-weight:400;color:var(--sub)">タップでコピー</span></button>';
+  return '<span class="muted" style="font-size:12px">車台番号：</span>' + parts.map(chip).join('');
 }
 // タップでクリップボードにコピー（押したボタンに「コピー済」を一瞬出す）
 function copyText(btn, t) {
@@ -592,6 +594,7 @@ function showForm() {
   app.querySelectorAll('[data-f]').forEach(el => el.addEventListener(el.dataset.date ? 'change' : 'input', () => {
     d[el.dataset.f] = el.dataset.date ? toWareki(el.value) : el.value;
     if (el.dataset.date) el.nextElementSibling.textContent = eraLabel(d[el.dataset.f]);
+    if (el.dataset.f === '車台番号') { const c = document.getElementById('chassischips'); if (c) c.innerHTML = chassisChipsHtml(el.value); }
   }));
   app.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('change', () => { d['doc_' + el.dataset.doc] = el.checked; }));
 
